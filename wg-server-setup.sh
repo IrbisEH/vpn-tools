@@ -133,50 +133,10 @@ StartWireGuard() {
 # ---------- Parse named args ----------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --iface=*)
-      WAN_IFACE="${1#*=}";
-      shift 1
-      ;;
-    --iface)
-      if [[ $# -lt 2 ]]; then
-        echo "$(GetErrorMark) missing value for --iface"; Usage; exit 1
-      fi
-      WAN_IFACE="$2"
-      shift 2
-      ;;
-    --wg-iface=*)
-      WG_IFACE="${1#*=}";
-      shift 1
-      ;;
-    --wg-iface)
-      if [[ $# -lt 2 ]]; then
-        echo "$(GetErrorMark) missing value for --wg-iface"; Usage; exit 1
-      fi
-      WG_IFACE="$2"
-      shift 2
-      ;;
-    --port=*)
-      WG_PORT="${1#*=}";
-      shift 1
-      ;;
-    --port)
-      if [[ $# -lt 2 ]]; then
-        echo "$(GetErrorMark) missing value for --port"; Usage; exit 1
-      fi
-      WG_PORT="$2"
-      shift 2
-      ;;
-    --subnet=*)
-      WG_SUBNET="${1#*=}";
-      shift 1
-      ;;
-    --subnet)
-      if [[ $# -lt 2 ]]; then
-        echo "$(GetErrorMark) missing value for --subnet"; Usage; exit 1
-      fi
-      WG_SUBNET="$2"
-      shift 2
-      ;;
+    --iface=*)    WAN_IFACE="${1#*=}"; shift 1 ;;
+    --wg-iface=*) WG_IFACE="${1#*=}"; shift 1 ;;
+    --port=*)     WG_PORT="${1#*=}"; shift 1 ;;
+    --subnet=*)   WG_SUBNET="${1#*=}"; shift 1 ;;
     -h|--help) Usage; exit 0 ;;
     *) echo "$(GetErrorMark) unknown argument: $1"; Usage; exit 1 ;;
   esac
