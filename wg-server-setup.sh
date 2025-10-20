@@ -192,12 +192,12 @@ if [[ -z "${WAN_IFACE}" ]]; then
   exit 1
 fi
 if [[ -z "${WG_IFACE}" ]]; then
-  echo "$(GetErrorMark) Missing required argument: --wg-iface";
+  echo "$(GetErrorMark) missing required argument: --wg-iface";
   Usage;
   exit 1
 fi
 if [[ -z "${WG_SUBNET}" ]]; then
-  echo "$(GetErrorMark) Missing required argument: --subnet";
+  echo "$(GetErrorMark) missing required argument: --subnet";
   Usage;
   exit 1
 fi
