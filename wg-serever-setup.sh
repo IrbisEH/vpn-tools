@@ -15,15 +15,15 @@ function GetSuccessMark() { printf "\e[32m[+]\e[0m"; }
 
 function Usage() {
 	cat <<EOF
-Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--port <51820>] [--subnet <CIDR>]
+Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--subnet <CIDR>] [--port <51820>]
 
 Required:
  --iface        external interface name  (WAN interface)
+ --wg-iface     WireGuard interface name, e.g. wg0
+ --subnet      vpn-subnet with CIDR, e.g. 10.6.0.0/24
 
 Optional:
-  --wg-iface    WireGuard interface name, by default wg0
   --port        WireGuard port, by default: 51820
-  --subnet      vpn-subnet with CIDR, example: 10.6.0.0/24, by default: 10.0.0.0/24
 
 Examples:
   sudo $0 --iface ens3
@@ -187,7 +187,17 @@ RequireRoot
 EnsureDeps
 
 if [[ -z "${WAN_IFACE}" ]]; then
-  echo "$(GetErrorMark) missing required argument: --iface";
+  echo "$(GetErrorMark) missing required argument: --iface"
+  Usage
+  exit 1
+fi
+if [[ -z "${WG_IFACE}" ]]; then
+  echo "$(GetErrorMark) missing required argument: --wg-iface"
+  Usage
+  exit 1
+fi
+if [[ -z "${WG_SUBNET}" ]]; then
+  echo "$(GetErrorMark) missing required argument: --subnet"
   Usage
   exit 1
 fi
