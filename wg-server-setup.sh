@@ -5,9 +5,9 @@ set -euo pipefail
 
 # ---------- Defaults ----------
 WAN_IFACE=""
-WG_IFACE="wg0"
+WG_IFACE=""
+WG_SUBNET=""
 WG_PORT=51820
-WG_SUBNET="10.0.0.0/24"
 
 # ---------- Helpers ----------
 function GetErrorMark() { printf "\e[31m[-]\e[0m"; }
@@ -15,19 +15,19 @@ function GetSuccessMark() { printf "\e[32m[+]\e[0m"; }
 
 function Usage() {
 	cat <<EOF
-Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--port <51820>] [--subnet <CIDR>]
+Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--subnet <CIDR>] [--port <51820>]
 
 Required:
  --iface        external interface name  (WAN interface)
+ --wg-iface    WireGuard interface name, example wg0
+ --subnet      vpn-subnet with CIDR, example: 10.6.0.0/24
 
 Optional:
-  --wg-iface    WireGuard interface name, by default wg0
   --port        WireGuard port, by default: 51820
-  --subnet      vpn-subnet with CIDR, example: 10.6.0.0/24, by default: 10.0.0.0/24
 
 Examples:
   sudo $0 --iface ens3
-  sudo $0 --iface eth0 --wg-iface wg1 --port 51821 --subnet 10.8.0.0/24
+  sudo $0 --iface eth0 --wg-iface wg1 --subnet 10.8.0.0/24 --port 51821
 EOF
 }
 
@@ -191,7 +191,16 @@ if [[ -z "${WAN_IFACE}" ]]; then
   Usage
   exit 1
 fi
-
+if [[ -z "${WG_IFACE}" ]]; then
+  echo "$(GetErrorMark) Missing required argument: --wg-iface";
+  Usage;
+  exit 1
+fi
+if [[ -z "${WG_SUBNET}" ]]; then
+  echo "$(GetErrorMark) Missing required argument: --subnet";
+  Usage;
+  exit 1
+fi
 if ! [[ "${WG_PORT}" =~ ^[0-9]{1,5}$ ]] || (( WG_PORT < 1 || WG_PORT > 65535 )); then
   echo "$(GetErrorMark) invalid --port: ${WG_PORT}";
   exit 1
