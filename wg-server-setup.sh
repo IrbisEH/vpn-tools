@@ -19,8 +19,8 @@ Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--subnet <CIDR>]
 
 Required:
  --iface        external interface name  (WAN interface)
- --wg-iface    WireGuard interface name, example wg0
- --subnet      vpn-subnet with CIDR, example: 10.6.0.0/24
+ --wg-iface    WireGuard interface name, e.g. wg0
+ --subnet      vpn-subnet with CIDR, e.g. 10.6.0.0/24
 
 Optional:
   --port        WireGuard port, by default: 51820
