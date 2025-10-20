@@ -18,16 +18,16 @@ function Usage() {
 Usage: sudo $0 --iface <external-iface> [--wg-iface <wg0|...>] [--subnet <CIDR>] [--port <51820>]
 
 Required:
- --iface        external interface name  (WAN interface)
- --wg-iface    WireGuard interface name, e.g. wg0
- --subnet      vpn-subnet with CIDR, e.g. 10.6.0.0/24
+ --iface        external interface name (WAN interface)
+ --wg-iface     WireGuard interface name (e.g. wg0)
+ --subnet       vpn-subnet with CIDR (e.g. 10.6.0.0/24)
 
 Optional:
-  --port        WireGuard port, by default: 51820
+  --port        WireGuard port (by default: 51820)
 
 Examples:
-  sudo $0 --iface ens3
-  sudo $0 --iface eth0 --wg-iface wg1 --subnet 10.8.0.0/24 --port 51821
+  sudo $0 --iface=ens3
+  sudo $0 --iface=eth0 --wg-iface=wg1 --subnet=10.8.0.0/24 --port=51821
 EOF
 }
 
