@@ -13,6 +13,8 @@ WAN_IFACE=""
 WG_PORT=51820
 
 # ---------- Helpers ----------
+function GetMark() { printf "\e[33m[>]\e[0m"; }
+
 function GetErrorMark() { printf "\e[31m[-]\e[0m"; }
 
 function GetSuccessMark() { printf "\e[32m[+]\e[0m"; }
@@ -72,7 +74,8 @@ function CheckDeps() {
   fi
 }
 
-function Install() {
+function InstallDeps() {
+  echo "$(GetMark) starting dependency installation..."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
   apt-get install -y wireguard wireguard-tools iptables
@@ -116,13 +119,12 @@ PY
 }
 
 function CreateKeys() {
-  install -d -m 0700 "/etc/wireguard"
-  if [[ ! -f /"etc/wireguard/privatekey" ]]; then
+  install -d -m 0700 /etc/wireguard
+
+  if [[ ! -f /etc/wireguard/privatekey ]]; then
     umask 077
-    wg genkey > "/etc/wireguard/privatekey"
-    wg pubkey < "/etc/wireguard/privatekey" > "/etc/wireguard/publickey"
-#    wg genkey | tee "/etc/wireguard/privatekey" | wg pubkey > "/etc/wireguard/publickey"
-    chmod 600 "/etc/wireguard/privatekey"
+    wg genkey | tee /etc/wireguard/privatekey | wg pubkey > /etc/wireguard/publickey
+    chmod 600 /etc/wireguard/privatekey
     echo "$(GetSuccessMark) created wg keys successfully"
   else
     chmod 600 /etc/wireguard/privatekey >/dev/null 2>&1 || true
@@ -196,10 +198,25 @@ function SetupFirewall() {
 }
 
 function StartWireGuard() {
-  # bring up once and enable autostart
+  local log="/var/log/wg-quick-${WG_IFACE}.log"
+  : > "${log}"
+
+  echo "$(GetMark) bringing up ${WG_IFACE}..."
+
   wg-quick down "${WG_IFACE}" &>/dev/null || true
-  wg-quick up "${WG_IFACE}"
-  systemctl --quiet enable --now "wg-quick@${WG_IFACE}.service" >/dev/null
+
+  if ! wg-quick up "${WG_IFACE}" &>>"${log}"; then
+    echo "$(GetErrorMark) failed to bring up ${WG_IFACE}"
+    echo "→ See log: ${log}"
+    echo "→ Or check: systemctl status wg-quick@${WG_IFACE}.service"
+    tail -n 10 "${log}" | sed 's/^/  /'
+    exit 1
+  fi
+
+  if ! systemctl enable --now "wg-quick@${WG_IFACE}.service" &>>"${log}"; then
+    echo "$(GetWarningMark) service enabled, but not started cleanly (see ${log})"
+  fi
+
   echo "$(GetSuccessMark) interface ${WG_IFACE} is up and enabled at boot"
 }
 
@@ -220,6 +237,7 @@ done
 RequireRoot
 CheckDeps
 Validate
+InstallDeps
 
 # ---------- Main flow ----------
 CreateKeys
@@ -230,5 +248,5 @@ StartWireGuard
 echo "$(GetSuccessMark) WireGuard server setup successfully done"
 
 echo
-echo " Server address: $(GetFirstHost "${WG_SUBNET}")  (iface: ${WG_IFACE}, port: ${WG_PORT}/udp)"
-echo " Add peers: wg set ${WG_IFACE} peer <pubkey> allowed-ips <client_ip/32> && wg-quick save ${WG_IFACE}"
+echo "Server address: $(GetFirstHost "${WG_SUBNET}")  (iface: ${WG_IFACE}, port: ${WG_PORT}/udp)"
+echo -e "To add peers use command: \e[33mwg set ${WG_IFACE} peer <pubkey> allowed-ips <client_ip/32> && wg-quick save ${WG_IFACE}\e[0m"
