@@ -192,7 +192,7 @@ function EnableIpforward() {
 
 function SetupFirewall() {
   if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
-    ufw --quiet allow "${WG_PORT}"/udp || true
+    ufw allow "${WG_PORT}"/udp || true
     echo "$(GetSuccessMark) UFW: allowed ${WG_PORT}/udp"
   fi
 }

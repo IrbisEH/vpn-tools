@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+LOG_FILE="${LOG_FILE:-./setup.log}"
+
+# ---------- Helpers ----------
+log() {
+  local level="${1:-info}"; shift
+  local message="${*:-}"
+  local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+
+  local color_reset="\e[0m"
+  local color_info=""           # <-- no color
+  local color_warn="\e[33m"     # yellow
+  local color_error="\e[31m"    # red
+  local color_success="\e[32m"  # green
+
+  local color prefix
+
+  case "$level" in
+    info)     color="$color_info";    prefix=">"  ;;
+    warn)     color="$color_warn";    prefix="!"  ;;
+    error)    color="$color_error";   prefix="-"  ;;
+    success)  color="$color_success"; prefix="+"  ;;
+    *)        color="$color_reset";   prefix="?"  ;;
+  esac
+
+  if [[ -z "$color" ]]; then
+    printf "%s %s %s\n" "[$prefix]" "$timestamp" "$message"
+  else
+    printf "%b%s%b %s %s\n" "$color" "[$prefix]" "$color_reset" "$timestamp" "$message"
+  fi
+
+  printf "%s %s %s\n" "[$prefix]" "$timestamp" "$message" >> "$LOG_FILE"
+}
+
+run() {
+  local title="$1"; shift 1
+
+  log info "$title"
+
+  (
+    set -euo pipefail
+    "$@"
+  ) >>"$LOG_FILE" 2>&1
+
+  rc=$?
+
+  if (( rc == 0 )); then
+    log success "$title - done"
+  else
+    log error "$title - failed (rc=$rc)"
+    return "$rc"
+  fi
+}
+
+# TODO: обдумать куда писать лог
+setup_logs() {
+  local log_dir="$1"
+  mkdir -p "$log_dir"
+  LOG_FILE="$log_dir/vpn-tools.log"
+  touch "$LOG_FILE"
+}
+
+# ---------- Functions ----------
+
+enable_ufw() {
+  ufw --force enable
+  ufw allow ssh
+  ufw reload
+}
+
+update_system() {
+  DEBIAN_FRONTEND=noninteractive apt update -y
+  DEBIAN_FRONTEND=noninteractive apt upgrade -y
+}
+
+install_wireguard() {
+  DEBIAN_FRONTEND=noninteractive apt install -y wireguard
+}
+
+install_wstunnel() {
+  latest="$(curl -sI https://github.com/erebe/wstunnel/releases/latest | tr -d '\r' | grep '^location:')" \
+  && latest="${latest##*/v}" \
+  && curl -fLo wstunnel.tar.gz "https://github.com/erebe/wstunnel/releases/download/v${latest}/wstunnel_${latest}_linux_amd64.tar.gz"
+  tar -xzf wstunnel.tar.gz wstunnel
+  chmod +x wstunnel
+  mv wstunnel /usr/local/bin
+  wstunnel --version
+  setcap cap_net_bind_service=+ep /usr/local/bin/wstunnel
+  useradd --system --shell /usr/sbin/nologin wstunnel
+}
+
+gen_secret() {
+  local secret=$(LC_ALL=C tr -dc '[:alnum:]' < /dev/urandom | head -c 64)
+  printf '%s\n' "$secret"
+}
+
+setup_forward() {
+  local cidr="$1"
+  local iface="$2"
+
+  if [[ -z "$cidr" || -z "$iface" ]]; then
+    echo "usage: setup_forward <CIDR> <IFACE>   e.g. setup_forward 10.10.0.0/24 eth0" >&2
+    return 1
+  fi
+
+  enable_core_forw
+  update_nat_rules_forw "$cidr" "$iface"
+  update_ufw_forw
+}
+
+enable_core_forw() {
+  local forward_rules
+  read -r -d '' forward_rules <<-EOF
+  	net.ipv4.ip_forward=1
+  	net.ipv6.conf.all.forwarding=1
+EOF
+  printf '%s\n' "$forward_rules" > /etc/sysctl.d/99-wireguard.conf
+  sysctl --system
+}
+
+update_nat_rules_forw() {
+  local cidr="$1"
+  local iface="$2"
+
+  local br="/etc/ufw/before.rules"
+  local nat_rules
+  read -r -d '' nat_rules <<-EOF
+  	*nat
+  	:POSTROUTING ACCEPT [0:0]
+  	-A POSTROUTING -s $cidr -o $iface -j MASQUERADE
+  	COMMIT
+EOF
+
+  sed -i '/^\*nat/,/^COMMIT/d' "$br"
+
+  tmpf="$(mktemp)"
+  awk -v block="$nat_rules" '
+    BEGIN { inserted=0 }
+    /^\*filter$/ && !inserted { print block; inserted=1 }
+    { print }
+    END { if (!inserted) print block }
+  ' "$br" > "$tmpf" && mv "$tmpf" "$br"
+}
+
+update_ufw_forw() {
+  sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+  ufw --force reload
+}
