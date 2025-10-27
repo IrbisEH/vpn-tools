@@ -53,12 +53,28 @@ run() {
   fi
 }
 
-# TODO: обдумать куда писать лог
 setup_logs() {
   local log_dir="$1"
   mkdir -p "$log_dir"
   LOG_FILE="$log_dir/vpn-tools.log"
   touch "$LOG_FILE"
+}
+
+make_tmp_copy() {
+  local source="$1"
+
+  local dir=$(dirname "$source")
+  local name=$(basename "$source")
+  local tmp=$(mktemp -p "$dir" ".$name.XXXXXX") || return 1
+
+  if [[ -e "$source" ]]; then
+    cp -a -- "$source" "$tmp" || { rm -f -- "$tmp"; return 1; }
+  else
+    : >"$tmp" || { rm -f -- "$tmp"; return 1; }
+    chmod 0644 "$tmp"
+  fi
+
+  printf "%s\n" "$tmp"
 }
 
 # ---------- Functions ----------
@@ -85,9 +101,9 @@ install_wstunnel() {
   tar -xzf wstunnel.tar.gz wstunnel
   chmod +x wstunnel
   mv wstunnel /usr/local/bin
-  wstunnel --version
+  wstunnel --version || return 1
   setcap cap_net_bind_service=+ep /usr/local/bin/wstunnel
-  useradd --system --shell /usr/sbin/nologin wstunnel
+  useradd --system --shell /usr/sbin/nologin wstunnel || true
 }
 
 gen_secret() {
@@ -104,46 +120,98 @@ setup_forward() {
     return 1
   fi
 
-  enable_core_forw
-  update_nat_rules_forw "$cidr" "$iface"
-  update_ufw_forw
+  echo -e "start setting core"
+  enable_core_forward
+
+  echo -e "start updating nat"
+  update_nat_rules_forward "$cidr" "$iface"
+
+  echo "start updating filter"
+  update_filter_forward_rule "$cidr" "$iface"
+
+  echo -e "start updating ufw"
+  update_ufw_forward
 }
 
-enable_core_forw() {
-  local forward_rules
-  read -r -d '' forward_rules <<-EOF
-  	net.ipv4.ip_forward=1
-  	net.ipv6.conf.all.forwarding=1
+enable_core_forward() {
+  local conf="/etc/sysctl.d/99-wireguard.conf"
+  local tmp="$(make_tmp_copy "$conf")"
+
+  cat << 'EOF' > "$tmp"
+net.ipv4.ip_forward=1
+net.ipv6.conf.all.forwarding=1
 EOF
-  printf '%s\n' "$forward_rules" > /etc/sysctl.d/99-wireguard.conf
-  sysctl --system
+
+  mv -f -- "$tmp" "$conf"
+  sysctl -p "$conf" || sysctl --system
 }
 
-update_nat_rules_forw() {
+update_nat_rules_forward() {
   local cidr="$1"
   local iface="$2"
 
-  local br="/etc/ufw/before.rules"
-  local nat_rules
-  read -r -d '' nat_rules <<-EOF
-  	*nat
-  	:POSTROUTING ACCEPT [0:0]
-  	-A POSTROUTING -s $cidr -o $iface -j MASQUERADE
-  	COMMIT
+  local rules
+  local conf="/etc/ufw/before.rules"
+  local tmp=$(make_tmp_copy "$conf")
+
+  read -r -d '' rules <<EOF || true
+*nat
+:POSTROUTING ACCEPT [0:0]
+-A POSTROUTING -s $cidr -o $iface -j MASQUERADE
+COMMIT
 EOF
 
-  sed -i '/^\*nat/,/^COMMIT/d' "$br"
-
-  tmpf="$(mktemp)"
-  awk -v block="$nat_rules" '
+  awk -v block="$rules" '
     BEGIN { inserted=0 }
+    /^\*nat$/     { skip=1; next }
+    skip && /^COMMIT$/ { skip=0; next }
     /^\*filter$/ && !inserted { print block; inserted=1 }
-    { print }
+    { if (!skip) print }
     END { if (!inserted) print block }
-  ' "$br" > "$tmpf" && mv "$tmpf" "$br"
+  ' "$conf" >"$tmp"
+
+  mv -f -- "$tmp" "$conf"
 }
 
-update_ufw_forw() {
-  sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+update_filter_forward_rule() {
+  local cidr="$1"
+  local iface="$2"
+
+  local rules
+  local conf="/etc/ufw/before.rules"
+  local tmp=$(make_tmp_copy "$conf")
+
+  read -r -d '' rule <<EOF || true
+-A ufw-before-forward -s $cidr -o $iface -j ACCEPT
+EOF
+
+  awk -v block="$rule" '
+    BEGIN { inserted=0; in_filter=0 }
+    /^\*filter$/ { in_filter=1 }
+    in_filter && /^COMMIT$/ {
+      if (!inserted) print block
+      in_filter=0
+    }
+    { print }
+    END {
+      if (!inserted && !in_filter) {
+        print ""
+        print "*filter"
+        print ":ufw-before-forward - [0:0]"
+        print block
+        print "COMMIT"
+      }
+    }
+  ' "$conf" >"$tmp"
+  mv -f -- "$tmp" "$conf"
+}
+
+update_ufw_forward() {
+  local conf="/etc/default/ufw"
+  local tmp=$(make_tmp_copy "$conf")
+
+  sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' "$tmp"
+
+  mv -f -- "$tmp" "$conf"
   ufw --force reload
 }
