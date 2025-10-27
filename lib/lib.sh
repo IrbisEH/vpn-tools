@@ -124,7 +124,7 @@ setup_forward() {
   enable_core_forward
 
   echo -e "start updating nat"
-  update_nat_rules_forward "$cidr" "$iface"
+  update_nat_forward_rules "$cidr" "$iface"
 
   echo "start updating filter"
   update_filter_forward_rule "$cidr" "$iface"
@@ -146,7 +146,7 @@ EOF
   sysctl -p "$conf" || sysctl --system
 }
 
-update_nat_rules_forward() {
+update_nat_forward_rules() {
   local cidr="$1"
   local iface="$2"
 
