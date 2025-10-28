@@ -123,14 +123,19 @@ setup_forward() {
   echo -e "start setting core"
   enable_core_forward
 
+  echo -e "start updating ufw"
+  enable_ufw_forward
+
   echo -e "start updating nat"
-  update_nat_forward_rules "$cidr" "$iface"
+  enable_nat_forward_rules "$cidr" "$iface"
 
   echo "start updating filter"
-  update_filter_forward_rule "$cidr" "$iface"
+  enable_filter_forward_rule "$cidr" "$iface"
 
-  echo -e "start updating ufw"
-  update_ufw_forward
+
+#  sudo ufw route allow in on eth1 out on eth0
+#sudo ufw route allow in on eth0 out on eth1
+
 }
 
 enable_core_forward() {
@@ -146,7 +151,7 @@ EOF
   sysctl -p "$conf" || sysctl --system
 }
 
-update_nat_forward_rules() {
+enable_nat_forward_rules() {
   local cidr="$1"
   local iface="$2"
 
@@ -173,7 +178,7 @@ EOF
   mv -f -- "$tmp" "$conf"
 }
 
-update_filter_forward_rule() {
+enable_filter_forward_rule() {
   local cidr="$1"
   local iface="$2"
 
