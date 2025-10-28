@@ -1,3 +1,10 @@
+setup_logs() {
+  local log_dir="$1"
+  mkdir -p "$log_dir"
+  LOG_FILE="$log_dir/vpn-tools.log"
+  touch "$LOG_FILE"
+}
+
 log() {
   local level="${1:-info}"; shift
   local message="${*:-}"
@@ -48,11 +55,14 @@ run() {
   fi
 }
 
-setup_logs() {
-  local log_dir="$1"
-  mkdir -p "$log_dir"
-  LOG_FILE="$log_dir/vpn-tools.log"
-  touch "$LOG_FILE"
+update_system() {
+  DEBIAN_FRONTEND=noninteractive apt update -y
+  DEBIAN_FRONTEND=noninteractive apt upgrade -y
+}
+
+gen_secret() {
+  local secret=$(LC_ALL=C tr -dc '[:alnum:]' < /dev/urandom | head -c 64)
+  printf '%s\n' "$secret"
 }
 
 make_tmp_copy() {

@@ -4,32 +4,6 @@ enable_ufw() {
   ufw reload
 }
 
-update_system() {
-  DEBIAN_FRONTEND=noninteractive apt update -y
-  DEBIAN_FRONTEND=noninteractive apt upgrade -y
-}
-
-install_wireguard() {
-  DEBIAN_FRONTEND=noninteractive apt install -y wireguard
-}
-
-install_wstunnel() {
-  latest="$(curl -sI https://github.com/erebe/wstunnel/releases/latest | tr -d '\r' | grep '^location:')" \
-  && latest="${latest##*/v}" \
-  && curl -fLo wstunnel.tar.gz "https://github.com/erebe/wstunnel/releases/download/v${latest}/wstunnel_${latest}_linux_amd64.tar.gz"
-  tar -xzf wstunnel.tar.gz wstunnel
-  chmod +x wstunnel
-  mv wstunnel /usr/local/bin
-  wstunnel --version || return 1
-  setcap cap_net_bind_service=+ep /usr/local/bin/wstunnel
-  useradd --system --shell /usr/sbin/nologin wstunnel || true
-}
-
-gen_secret() {
-  local secret=$(LC_ALL=C tr -dc '[:alnum:]' < /dev/urandom | head -c 64)
-  printf '%s\n' "$secret"
-}
-
 setup_forward() {
   local lan_cidr="$1"
   local lan_iface="$2"
