@@ -1,84 +1,3 @@
-#!/usr/bin/env bash
-
-LOG_FILE="${LOG_FILE:-./setup.log}"
-
-# ---------- Helpers ----------
-log() {
-  local level="${1:-info}"; shift
-  local message="${*:-}"
-  local timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-
-  local color_reset="\e[0m"
-  local color_info=""           # <-- no color
-  local color_warn="\e[33m"     # yellow
-  local color_error="\e[31m"    # red
-  local color_success="\e[32m"  # green
-
-  local color prefix
-
-  case "$level" in
-    info)     color="$color_info";    prefix=">"  ;;
-    warn)     color="$color_warn";    prefix="!"  ;;
-    error)    color="$color_error";   prefix="-"  ;;
-    success)  color="$color_success"; prefix="+"  ;;
-    *)        color="$color_reset";   prefix="?"  ;;
-  esac
-
-  if [[ -z "$color" ]]; then
-    printf "%s %s %s\n" "[$prefix]" "$timestamp" "$message"
-  else
-    printf "%b%s%b %s %s\n" "$color" "[$prefix]" "$color_reset" "$timestamp" "$message"
-  fi
-
-  printf "%s %s %s\n" "[$prefix]" "$timestamp" "$message" >> "$LOG_FILE"
-}
-
-run() {
-  local title="$1"; shift 1
-
-  log info "$title"
-
-  (
-    set -euo pipefail
-    "$@"
-  ) >>"$LOG_FILE" 2>&1
-
-  rc=$?
-
-  if (( rc == 0 )); then
-    log success "$title - done"
-  else
-    log error "$title - failed (rc=$rc)"
-    return "$rc"
-  fi
-}
-
-setup_logs() {
-  local log_dir="$1"
-  mkdir -p "$log_dir"
-  LOG_FILE="$log_dir/vpn-tools.log"
-  touch "$LOG_FILE"
-}
-
-make_tmp_copy() {
-  local source="$1"
-
-  local dir=$(dirname "$source")
-  local name=$(basename "$source")
-  local tmp=$(mktemp -p "$dir" ".$name.XXXXXX") || return 1
-
-  if [[ -e "$source" ]]; then
-    cp -a -- "$source" "$tmp" || { rm -f -- "$tmp"; return 1; }
-  else
-    : >"$tmp" || { rm -f -- "$tmp"; return 1; }
-    chmod 0644 "$tmp"
-  fi
-
-  printf "%s\n" "$tmp"
-}
-
-# ---------- Functions ----------
-
 enable_ufw() {
   ufw --force enable
   ufw allow ssh
@@ -112,30 +31,32 @@ gen_secret() {
 }
 
 setup_forward() {
-  local cidr="$1"
-  local iface="$2"
+  local lan_cidr="$1"
+  local lan_iface="$2"
+  local wan_iface="$3"
 
-  if [[ -z "$cidr" || -z "$iface" ]]; then
-    echo "usage: setup_forward <CIDR> <IFACE>   e.g. setup_forward 10.10.0.0/24 eth0" >&2
+  if [[ -z "$lan_cidr" || -z "$lan_iface" || -z "$wan_iface" ]]; then
+    echo "usage: setup_forward <LAN_CIDR> <LAN_IFACE> <WAN_IFACE>"
+    echo "e.g.:  setup_forward 10.10.0.0/24 wg0 eth0" >&2
     return 1
   fi
 
-  echo -e "start setting core"
+  echo -e "Enable core IP forwarding"
   enable_core_forward
 
-  echo -e "start updating ufw"
-  enable_ufw_forward
+  echo -e "Add NAT rule (masquerade $lan_cidr -> $wan_iface)"
+  add_nat_forward_rules "$lan_cidr" "$wan_iface"
 
-  echo -e "start updating nat"
-  enable_nat_forward_rules "$cidr" "$iface"
+  echo "Add filter rule for forwarding ($lan_cidr -> $wan_iface)"
+  add_filter_forward_rule "$lan_cidr" "$wan_iface"
 
-  echo "start updating filter"
-  enable_filter_forward_rule "$cidr" "$iface"
+  echo -e "Set UFW forward policy to ACCEPT"
+  add_ufw_forward_policy
 
+  echo -e "Allow routed traffic from LAN ($lan_iface) to WAN ($wan_iface)"
+  ufw route allow in on "$lan_iface" out on "$wan_iface"
 
-#  sudo ufw route allow in on eth1 out on eth0
-#sudo ufw route allow in on eth0 out on eth1
-
+  ufw --force reload
 }
 
 enable_core_forward() {
@@ -151,7 +72,7 @@ EOF
   sysctl -p "$conf" || sysctl --system
 }
 
-enable_nat_forward_rules() {
+add_nat_forward_rules() {
   local cidr="$1"
   local iface="$2"
 
@@ -178,7 +99,7 @@ EOF
   mv -f -- "$tmp" "$conf"
 }
 
-enable_filter_forward_rule() {
+add_filter_forward_rule() {
   local cidr="$1"
   local iface="$2"
 
@@ -211,12 +132,11 @@ EOF
   mv -f -- "$tmp" "$conf"
 }
 
-update_ufw_forward() {
+add_ufw_forward_policy() {
   local conf="/etc/default/ufw"
   local tmp=$(make_tmp_copy "$conf")
 
   sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' "$tmp"
 
   mv -f -- "$tmp" "$conf"
-  ufw --force reload
 }
