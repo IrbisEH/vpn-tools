@@ -65,18 +65,20 @@ gen_secret() {
   printf '%s\n' "$secret"
 }
 
-make_tmp_copy() {
-  local source="$1"
-
+make_tmp() {
   local dir=$(dirname "$source")
   local name=$(basename "$source")
   local tmp=$(mktemp -p "$dir" ".$name.XXXXXX") || return 1
+  chmod 0644 "$tmp"
+  printf "%s\n" "$tmp"
+}
+
+make_tmp_copy() {
+  local source="$1"
+  local tmp=$(make_tmp)
 
   if [[ -e "$source" ]]; then
     cp -a -- "$source" "$tmp" || { rm -f -- "$tmp"; return 1; }
-  else
-    : >"$tmp" || { rm -f -- "$tmp"; return 1; }
-    chmod 0644 "$tmp"
   fi
 
   printf "%s\n" "$tmp"

@@ -10,8 +10,8 @@ setup_forward() {
   local wan_iface="$3"
 
   if [[ -z "$lan_cidr" || -z "$lan_iface" || -z "$wan_iface" ]]; then
-    echo "usage: setup_forward <LAN_CIDR> <LAN_IFACE> <WAN_IFACE>"
-    echo "e.g.:  setup_forward 10.10.0.0/24 wg0 eth0" >&2
+    echo -e "usage: setup_forward <LAN_CIDR> <LAN_IFACE> <WAN_IFACE>"
+    echo -e "e.g.:  setup_forward 10.10.0.0/24 wg0 eth0"
     return 1
   fi
 
